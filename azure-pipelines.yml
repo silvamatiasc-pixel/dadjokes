@@ -1,0 +1,186 @@
+trigger:
+  branches:
+    include:
+      - main
+
+pr:
+  branches:
+    include:
+      - main
+
+pool:
+  vmImage: ubuntu-latest
+
+variables:
+  azureServiceConnection: "dads-jokes-azure"
+  webAppName: "dads-joke-site"
+  artifactName: "site"
+  semgrepArtifactName: "semgrep-results"
+
+stages:
+  - stage: StaticAnalysis
+    displayName: Static code review
+    jobs:
+      - job: CodeReview
+        displayName: ESLint, dependency audit, and Semgrep
+        steps:
+          - checkout: self
+            clean: true
+
+          - task: NodeTool@0
+            displayName: Use Node.js 20
+            inputs:
+              versionSpec: "20.x"
+
+          - script: npm ci
+            displayName: Install dependencies, including devDependencies
+            workingDirectory: "$(Build.SourcesDirectory)"
+
+          # Warnings from eslint-plugin-security remain visible but do not stop
+          # this step, allowing the blocking Semgrep gate to run afterward.
+          - script: npm run lint
+            displayName: ESLint code-quality and security lint
+            workingDirectory: "$(Build.SourcesDirectory)"
+
+          - script: npm audit --audit-level=high
+            displayName: npm audit, report only
+            workingDirectory: "$(Build.SourcesDirectory)"
+            continueOnError: true
+
+          # Keep the version inside Bash rather than using $(semgrepVersion).
+          # If an Azure macro is missing, Bash treats $(name) as command
+          # substitution, which caused the original "command not found" error.
+          - bash: |
+              set -euo pipefail
+
+              readonly SEMGREP_VERSION="1.174.0"
+              readonly VENV_DIR="${AGENT_TEMPDIRECTORY}/semgrep-venv"
+              readonly REPORT_DIR="${BUILD_ARTIFACTSTAGINGDIRECTORY}/semgrep"
+
+              echo "Installing Semgrep ${SEMGREP_VERSION}"
+              rm -rf "${VENV_DIR}"
+              mkdir -p "${REPORT_DIR}"
+
+              python3 -m venv "${VENV_DIR}"
+              "${VENV_DIR}/bin/python" -m pip install --upgrade pip
+              "${VENV_DIR}/bin/python" -m pip install \
+                --disable-pip-version-check \
+                "semgrep==${SEMGREP_VERSION}"
+
+              "${VENV_DIR}/bin/semgrep" --version
+            displayName: Install pinned Semgrep Community Edition
+            workingDirectory: "$(Build.SourcesDirectory)"
+            condition: succeededOrFailed()
+
+          # The three project-specific rules live in source control. --error
+          # returns exit code 1 when these intentional findings are detected.
+          - bash: |
+              set -euo pipefail
+
+              readonly SEMGREP_BIN="${AGENT_TEMPDIRECTORY}/semgrep-venv/bin/semgrep"
+              readonly REPORT_DIR="${BUILD_ARTIFACTSTAGINGDIRECTORY}/semgrep"
+
+              test -x "${SEMGREP_BIN}"
+              mkdir -p "${REPORT_DIR}"
+
+              "${SEMGREP_BIN}" scan \
+                --config .semgrep.yml \
+                --metrics=off \
+                --error \
+                --json-output "${REPORT_DIR}/training-findings.json" \
+                --sarif-output "${REPORT_DIR}/training-findings.sarif" \
+                .
+            displayName: Semgrep blocking gate, three intentional findings
+            workingDirectory: "$(Build.SourcesDirectory)"
+            condition: succeededOrFailed()
+
+          # Registry rules can evolve, so this broader scan is advisory. It
+          # still runs after the blocking gate so its report can be published.
+          - bash: |
+              set -euo pipefail
+
+              readonly SEMGREP_BIN="${AGENT_TEMPDIRECTORY}/semgrep-venv/bin/semgrep"
+              readonly REPORT_DIR="${BUILD_ARTIFACTSTAGINGDIRECTORY}/semgrep"
+
+              test -x "${SEMGREP_BIN}"
+              mkdir -p "${REPORT_DIR}"
+
+              "${SEMGREP_BIN}" scan \
+                --config p/security-audit \
+                --config p/nodejs \
+                --metrics=off \
+                --json-output "${REPORT_DIR}/community-findings.json" \
+                --sarif-output "${REPORT_DIR}/community-findings.sarif" \
+                .
+            displayName: Semgrep community rules, advisory report
+            workingDirectory: "$(Build.SourcesDirectory)"
+            condition: always()
+            continueOnError: true
+
+          - task: PublishPipelineArtifact@1
+            displayName: Publish Semgrep JSON and SARIF reports
+            condition: always()
+            inputs:
+              targetPath: "$(Build.ArtifactStagingDirectory)/semgrep"
+              artifact: "$(semgrepArtifactName)"
+
+  - stage: Build
+    displayName: Package the application
+    dependsOn: StaticAnalysis
+    condition: succeeded()
+    jobs:
+      - job: Package
+        steps:
+          - task: NodeTool@0
+            displayName: Use Node.js 20
+            inputs:
+              versionSpec: "20.x"
+
+          - script: npm ci --omit=dev
+            displayName: Install production dependencies
+            workingDirectory: "$(Build.SourcesDirectory)"
+
+          - task: CopyFiles@2
+            displayName: Copy deployable application files
+            inputs:
+              SourceFolder: "$(Build.SourcesDirectory)"
+              Contents: |
+                server.js
+                package.json
+                package-lock.json
+                node_modules/**
+                public/**
+                jokes/**
+                data/**
+              TargetFolder: "$(Build.ArtifactStagingDirectory)"
+
+          # security-lab/** is intentionally not packaged for deployment.
+          - task: PublishPipelineArtifact@1
+            displayName: Publish application artifact
+            inputs:
+              targetPath: "$(Build.ArtifactStagingDirectory)"
+              artifact: "$(artifactName)"
+
+  - stage: Deploy
+    displayName: Deploy to Azure App Service
+    dependsOn: Build
+    condition: succeeded()
+    jobs:
+      - deployment: DeployWebApp
+        displayName: Deploy the application
+        environment: production
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - download: current
+                  artifact: "$(artifactName)"
+
+                - task: AzureWebApp@1
+                  displayName: Deploy to App Service
+                  inputs:
+                    azureSubscription: "$(azureServiceConnection)"
+                    appType: webAppLinux
+                    appName: "$(webAppName)"
+                    startUpCommand: "npm start"
+                    package: "$(Pipeline.Workspace)/$(artifactName)"

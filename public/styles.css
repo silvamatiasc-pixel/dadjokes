@@ -1,0 +1,108 @@
+/* Styling stays intentionally basic - improving the interface is Sprint 3. */
+
+body {
+  font-family: system-ui, sans-serif;
+  margin: 0;
+  background: #f5f5f5;
+  color: #222;
+}
+
+.container {
+  max-width: 600px;
+  margin: 60px auto;
+  padding: 24px;
+  text-align: center;
+}
+
+h1 {
+  font-size: 1.8rem;
+}
+
+.subtitle {
+  color: #666;
+  margin-bottom: 40px;
+}
+
+.joke {
+  min-height: 80px;
+  font-size: 1.3rem;
+  line-height: 1.5;
+  background: #fff;
+  border-left: 4px solid #888;
+  padding: 20px;
+  margin: 0 0 30px 0;
+  text-align: left;
+}
+
+.joke-btn {
+  font-size: 1rem;
+  padding: 12px 24px;
+  border: none;
+  border-radius: 6px;
+  background: #333;
+  color: #fff;
+  cursor: pointer;
+}
+
+.joke-btn:hover {
+  background: #555;
+}
+
+.joke-btn:disabled {
+  background: #aaa;
+  cursor: default;
+}
+
+/* Login form */
+.login-box {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 280px;
+  margin: 0 auto;
+  text-align: left;
+}
+
+.login-box label {
+  font-size: 0.9rem;
+  color: #444;
+}
+
+.login-box input {
+  padding: 10px;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+}
+
+.login-box .joke-btn {
+  margin-top: 12px;
+}
+
+.message {
+  color: #b00020;
+  min-height: 1.2rem;
+  font-size: 0.9rem;
+}
+
+/* Top bar (welcome + logout) */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.welcome {
+  font-size: 0.9rem;
+  color: #444;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: #333;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 0.9rem;
+}

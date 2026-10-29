@@ -1,0 +1,79 @@
+rules:
+  - id: training.nodejs.command-injection
+    message: >-
+      User-controlled input reaches child_process.exec(), which invokes a shell
+      and can allow OS command injection. Use execFile/spawn with a fixed
+      executable and an allowlisted argument array instead.
+    severity: ERROR
+    languages:
+      - javascript
+    mode: taint
+    pattern-sources:
+      - pattern: req.query.$PARAM
+    pattern-sinks:
+      - pattern: childProcess.exec(...)
+    paths:
+      include:
+        - security-lab/vulnerable-routes.js
+    metadata:
+      category: security
+      technology:
+        - nodejs
+        - express
+      cwe:
+        - "CWE-78: Improper Neutralization of Special Elements used in an OS Command"
+      owasp:
+        - "A03:2021 - Injection"
+
+  - id: training.nodejs.path-traversal
+    message: >-
+      A request parameter is used to construct a filesystem path before
+      fs.readFileSync(). An attacker can use ../ sequences to read files outside
+      the intended directory. Resolve the path and enforce that it remains under
+      an approved base directory.
+    severity: ERROR
+    languages:
+      - javascript
+    mode: taint
+    pattern-sources:
+      - pattern: req.query.$PARAM
+    pattern-sinks:
+      - pattern: fs.readFileSync(...)
+    paths:
+      include:
+        - security-lab/vulnerable-routes.js
+    metadata:
+      category: security
+      technology:
+        - nodejs
+        - express
+      cwe:
+        - "CWE-22: Improper Limitation of a Pathname to a Restricted Directory"
+      owasp:
+        - "A01:2021 - Broken Access Control"
+
+  - id: training.nodejs.code-injection-eval
+    message: >-
+      Request data reaches eval(), allowing arbitrary JavaScript execution in
+      the Node.js process. Replace eval with a constrained parser or an explicit
+      allowlist of supported operations.
+    severity: ERROR
+    languages:
+      - javascript
+    mode: taint
+    pattern-sources:
+      - pattern: req.body.$PARAM
+    pattern-sinks:
+      - pattern: eval(...)
+    paths:
+      include:
+        - security-lab/vulnerable-routes.js
+    metadata:
+      category: security
+      technology:
+        - nodejs
+        - express
+      cwe:
+        - "CWE-95: Improper Neutralization of Directives in Dynamically Evaluated Code"
+      owasp:
+        - "A03:2021 - Injection"

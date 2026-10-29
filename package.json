@@ -1,0 +1,17 @@
+{
+  "name": "the-absolute-dads-jokes-site",
+  "version": "2.0.0",
+  "description": "A site that tells free dad jokes, now with login and no-repeat tracking.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0",
+    "eslint-plugin-security": "^1.7.1"
+  }
+}
